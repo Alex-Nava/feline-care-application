@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const sequelize = require('./config/database');
 const Cat = require('./models/Cat');
 const catRoutes = require('./routes/catRoutes');
+const noteRoutes = require('./routes/noteRoutes');
 const cors = require('cors'); // Importar
 
 dotenv.config();
@@ -14,6 +15,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 app.use('/api/cats', catRoutes);
+app.use('/api/notes', noteRoutes);
 
 // Probar la conexión real con PostgreSQL local
 async function testDatabase() {
