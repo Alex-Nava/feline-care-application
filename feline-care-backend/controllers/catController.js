@@ -1,37 +1,51 @@
 const Cat = require('../models/Cat');
 
-// 1. Registrar un nuevo felino
+// 1. Registrar un nuevo felino amarrado a su hogar
 exports.createCat = async (req, res) => {
   try {
-    const { name, age, breed } = req.body;
+    // Recibimos el householdId desde el cuerpo de la petición
+    const { name, age, breed, householdId } = req.body;
 
-    // Validación simple
-    if (!name || !age || !breed) {
+    // Validación estricta: si no hay ID de hogar, frenamos el guardado
+    if (!name || !age || !breed || !householdId) {
       return res.status(400).json({ 
         success: false, 
-        message: 'El nombre, la edad y la raza son obligatorios' 
+        message: 'Por favor, completa todos los campos de la mascota (incluyendo el Hogar).' 
       });
     }
 
-    // Opción más segura: guardas solo lo que esperas recibir
-const newCat = await Cat.create({
-  name,
-  age,
-  breed,
-  weight: req.body.weight,
-  health_status: req.body.health_status,
-  behavior_notes: req.body.behavior_notes
-});
+    // Guardamos la mascota inyectándole su respectivo hogar
+    const newCat = await Cat.create({
+      name,
+      age: parseInt(age),
+      breed,
+      householdId: parseInt(householdId), // <-- Guardamos la relación
+      weight: req.body.weight,
+      health_status: req.body.health_status,
+      behavior_notes: req.body.behavior_notes
+    });
+
     res.status(201).json({ success: true, message: '🐈 ¡Gatito registrado con éxito!', data: newCat });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// 2. Obtener todos los felinos registrados
+// 2. Obtener SOLO los felinos del hogar activo (Filtrado Inteligente 🎯)
 exports.getAllCats = async (req, res) => {
   try {
-    const cats = await Cat.findAll();
+    // Leemos el householdId que viaja como parámetro en la URL (?householdId=1) o por headers
+    const householdId = req.query.householdId || req.headers['household-id'];
+
+    if (!householdId) {
+      return res.status(400).json({ success: false, message: 'Falta el parámetro householdId para filtrar.' });
+    }
+
+    // Filtramos usando el WHERE de Sequelize para aislar los datos de la casa
+    const cats = await Cat.findAll({
+      where: { householdId: parseInt(householdId) }
+    });
+
     res.status(200).json({
       success: true,
       data: cats

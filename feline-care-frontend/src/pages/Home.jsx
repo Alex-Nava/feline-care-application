@@ -1,57 +1,82 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import CatForm from '../CatForm'; // Subimos un nivel con '../' porque estamos dentro de /pages
 import HomeNotes from '../components/HomeNotes';
+import PetsManager from './PetsManager';
 
-export default function Home() {
-  const [cats, setCats] = useState([]);
-  const [notes, setNotes] = useState([]);
+export default function Home() { // Ya no recibimos notes por props, las gestionamos aquí mismo
+  const [currentPet, setCurrentPet] = useState(null);
+  const [notes, setNotes] = useState([]); // Este es el estado maestro de las notas
 
-  const fetchCats = () => {
-    axios.get('http://localhost:3000/api/cats')
-      .then(response => setCats(response.data.data))
-      .catch(error => console.error(error));
-  };
-
+  // Traer las notas globales del tablón de la casa
   const fetchNotes = () => {
-    axios.get('http://localhost:3000/api/notes')
-      .then(response => setNotes(response.data))
-      .catch(error => console.error('Error al traer notas:', error));
+    const householdId = localStorage.getItem('householdId') || '1';
+
+    axios.get('http://localhost:3000/api/notes', {
+      params: { householdId: householdId },
+      headers: { 'household-id': householdId }
+    })
+      .then(response => {
+        setNotes(response.data); // Actualizamos el estado maestro
+      })
+      .catch(error => {
+        console.error('Error al traer notas:', error);
+      });
   };
 
   useEffect(() => { 
-    fetchCats(); 
     fetchNotes(); 
   }, []);
 
   return (
-    <div className="w-full flex flex-col items-center">
-      <header className="mb-8 text-center">
-        <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">🐱 Feline Care</h1>
-        <p className="text-slate-500 mt-1">Gestión inteligente de felinos</p>
-      </header>
+    <div className="w-full flex flex-col items-center space-y-6">
       
-      {/* Tablón de Notas de la Casa */}
-      <div className="w-full max-w-md mb-6">
-        <HomeNotes notes={notes} onNoteAdded={fetchNotes} />
+      {/* 1. Encabezado */}
+      <header className="text-center w-full">
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center justify-center gap-2">
+          <span>🐾</span> Feline & Canine Care
+        </h1>
+        <p className="text-slate-400 text-xs mt-0.5 uppercase tracking-wider font-bold">
+          Gestión inteligente del hogar
+        </p>
+      </header>
+
+      {/* 2. Registro de Mascotas */}
+      <div className="w-full max-w-md">
+        <PetsManager 
+          selectedPetId={currentPet?.id} 
+          onPetSelected={(pet) => setCurrentPet(pet)} 
+        />
       </div>
 
-      <CatForm onCatAdded={fetchCats} />
-
-      {/* Grid de Gatos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-5xl mt-8">
-        {cats.map(cat => ( 
-          <div key={cat.id} className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 transition-all duration-300">
-            <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 text-2xl">🐱</div>
-            <h2 className="text-2xl font-bold text-slate-800">{cat.name}</h2>
-            <div className="flex gap-2 mt-2">
-              <p className="text-slate-400 font-medium">Edad: {cat.age} años</p>
-              <span className="text-slate-300">|</span>
-              <p className="text-blue-600 font-semibold">{cat.breed || 'Sin raza'}</p>
+      {/* 3. Panel de Contexto */}
+      <div className="w-full max-w-md">
+        {currentPet ? (
+          <div className="space-y-4 animate-fadeIn">
+            <div className="bg-slate-900 text-white p-5 rounded-3xl shadow-xl flex justify-between items-center border border-slate-800">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Panel activo de:</p>
+                <h2 className="text-2xl font-black tracking-tight">{currentPet.name} {currentPet.type === 'CAT' || currentPet.type === 'Gato' ? '🐱' : '🐶'}</h2>
+              </div>
+              <span className="text-xs font-bold px-3 py-1 bg-white/10 rounded-full border border-white/10 backdrop-blur-sm">
+                {currentPet.gender === 'MALE' || currentPet.gender === 'Machito' ? 'Macho ♂' : 'Hembra ♀'}
+              </span>
             </div>
           </div>
-        ))}
+        ) : (
+          <div className="text-center text-slate-400 text-xs py-6 bg-white border border-slate-100/80 rounded-3xl font-medium shadow-sm">
+            🔒 Selecciona un heredero en el carrusel de arriba para abrir sus bitácoras.
+          </div>
+        )}
       </div>
+      
+      {/* 4. Tablón de Notas (CONECTADO) */}
+      <div className="w-full max-w-md">
+        <div className="bg-white p-1 rounded-3xl shadow-sm border border-slate-100/80">
+          {/* Aquí le pasamos el estado 'notes' y la función 'fetchNotes' para refrescar */}
+          <HomeNotes notes={notes} onNoteAdded={fetchNotes} />
+        </div>
+      </div>
+
     </div>
   );
 }

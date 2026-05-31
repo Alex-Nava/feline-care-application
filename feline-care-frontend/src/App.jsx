@@ -88,6 +88,7 @@ function BottomNavbar({ isAuthenticated }) {
 function App() {
   const [user, setUser] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [notes, setNotes] = useState([]);
 
   useEffect(() => {
     // Al arrancar, verificamos si el celular ya tiene un token guardado
@@ -102,6 +103,18 @@ function App() {
     localStorage.clear();
     setUser(null);
   };
+
+  const cargarNotas = async () => {
+  try {
+    const householdId = localStorage.getItem('householdId');
+    if (!householdId) return;
+
+    const res = await axios.get(`http://localhost:3000/api/notes?householdId=${householdId}`);
+    setNotes(res.data); // Aquí guardamos las notas
+  } catch (err) {
+    console.error("Error al traer notas:", err);
+  }
+};
 
   if (checkingAuth) {
     return (
@@ -130,7 +143,7 @@ function App() {
 
         <Routes>
           {/* Si el usuario NO está logeado, cualquier ruta lo rebota a /auth */}
-          <Route path="/" element={user ? <Home /> : <Navigate to="/auth" />} />
+          <Route path="/" element={user ? <Home notes={notes} cargarNotas={cargarNotas} /> : <Navigate to="/auth" />} />
           <Route path="/meals" element={user ? <Meals /> : <Navigate to="/auth" />} />
           <Route path="/health" element={user ? <Health /> : <Navigate to="/auth" />} />
           <Route path="/appointments" element={user ? <Appointments /> : <Navigate to="/auth" />} />

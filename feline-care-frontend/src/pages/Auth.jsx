@@ -14,6 +14,7 @@ export default function Auth({ onLoginSuccess }) {
   // Estado temporal para guardar el ID de usuario recién registrado
   const [tempUserId, setTempUserId] = useState(null);
   const [tempCode, setTempCode] = useState('');
+  const [tempHouseholdId, setTempHouseholdId] = useState(null); // <-- Guardamos el ID del hogar creado temporalmente
 
   // 1. Manejar el Login Tradicional
   const handleLogin = (e) => {
@@ -21,22 +22,36 @@ export default function Auth({ onLoginSuccess }) {
     axios.post('http://localhost:3000/api/auth/login', { email, password })
       .then(res => {
         localStorage.setItem('token', res.data.token);
-        // Guardamos el hogar actual en el storage
-        localStorage.setItem('householdId', res.data.user.householdId); 
-        onLoginSuccess(res.data.user);
+        
+        // CAPTURA INTELIGENTE: Busca en todas las variantes posibles
+        const userData = res.data.user || {};
+        const hId = userData.householdId || userData.household_id || res.data.householdId || res.data.household_id;
+        
+        if (hId) {
+          localStorage.setItem('householdId', hId); 
+        } else {
+          console.error("El backend no envió ningún ID de hogar en el login:", res.data);
+        }
+        
+        onLoginSuccess(userData);
       })
       .catch(err => alert(err.response?.data?.msg || 'Error en las credenciales'));
   };
-
-  // 2. Manejar el Registro (Paso 1: Crea el usuario)
+  // 2. Manejar el Registro (Paso 1: Crea el usuario y su hogar base)
   const handleRegister = (e) => {
     e.preventDefault();
     axios.post('http://localhost:3000/api/auth/register', { name, email, password })
       .then(res => {
-        // En lugar de logearlo directo, le mostramos su código de hogar por si quiere compartirlo
         localStorage.setItem('token', res.data.token);
-        setTempUserId(res.data.user.id);
-        setTempCode(res.data.inviteCode);
+        
+        // Almacenamos temporalmente los datos del hogar que el backend le auto-asignó al registrarse
+        const userData = res.data.user || {};
+        const autoHouseholdId = userData.householdId || userData.household_id || res.data.householdId || res.data.household_id;
+        
+        setTempUserId(userData.id || res.data.userId);
+        setTempCode(res.data.inviteCode || userData.inviteCode);
+        setTempHouseholdId(autoHouseholdId); // Se guarda en el estado temporal
+        
         setMode('join_household'); // Lo mandamos a la pantalla de decisión de hogar
       })
       .catch(err => alert(err.response?.data?.msg || 'Error al registrarte'));
@@ -50,20 +65,34 @@ export default function Auth({ onLoginSuccess }) {
       inviteCode: inviteCode.toUpperCase().trim()
     })
     .then(res => {
-      localStorage.setItem('householdId', res.data.householdId);
+      // Si se une con éxito a otra casa, guardamos el ID del nuevo hogar adoptado
+      const joinedId = res.data.householdId || res.data.household_id;
+      localStorage.setItem('householdId', joinedId);
+      
       alert('¡Sincronizado! Te has unido al hogar con éxito. 🎉');
-      window.location.reload(); // Recargamos para activar el flujo principal
+      window.location.href = '/'; // Redirección limpia a la raíz
     })
     .catch(err => {
-      // Aquí saltará el aviso VIP si ya hay 2 personas en el plan free 💸
       alert(err.response?.data?.msg || 'Error al unirse');
     });
+  };
+
+  // 4. Acción para Empezar Solo (Parchado 🔥)
+  const handleStartSolo = () => {
+    if (tempHouseholdId) {
+      localStorage.setItem('householdId', tempHouseholdId);
+      localStorage.setItem('householdCode', tempCode);
+      window.location.href = '/'; // Redirección limpia forzando la lectura de estados
+    } else {
+      // Si por alguna razón el backend no lo devolvió en el registro, recargamos para validar sesión
+      window.location.href = '/';
+    }
   };
 
   return (
     <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-center px-6 py-12 animate-fadeIn">
       
-      {/* Branding / Logo superior estilo App Store */}
+      {/* Branding / Logo superior */}
       <div className="text-center mb-8">
         <div className="w-20 h-20 bg-gradient-to-tr from-orange-500 to-amber-400 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-orange-100">
           <span className="text-4xl">🐾</span>
@@ -156,7 +185,7 @@ export default function Auth({ onLoginSuccess }) {
           </form>
         )}
 
-        {/* VISTA 3: CONFIGURACIÓN LOGÍSTICA DEL HOGAR (PANTALLA MONETIZADORA 💸) */}
+        {/* VISTA 3: CONFIGURACIÓN LOGÍSTICA DEL HOGAR */}
         {mode === 'join_household' && (
           <div className="space-y-5">
             <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-center">
@@ -169,9 +198,9 @@ export default function Auth({ onLoginSuccess }) {
               <p className="text-xs text-slate-400 px-4">Puedes empezar solo con tu código asignado o unirte al hogar de otra persona.</p>
             </div>
 
-            {/* Opción A: Empezar Solo */}
+            {/* Opción A: Empezar Solo (Llama a nuestra función parchada) */}
             <button 
-              onClick={() => window.location.reload()} 
+              onClick={handleStartSolo} 
               className="w-full bg-orange-500 text-white font-black p-3.5 rounded-2xl text-xs shadow-md active:scale-95 transition-all"
             >
               🏠 Empezar mi propio Hogar (Usa tu código {tempCode})
