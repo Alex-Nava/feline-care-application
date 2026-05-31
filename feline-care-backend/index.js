@@ -2,10 +2,12 @@ const express = require('express');
 const dotenv = require('dotenv');
 const sequelize = require('./config/database');
 const cors = require('cors'); // Importar
+const litterBoxRoutes = require('./routes/litterBoxRoutes');
 
 // 1. Cargamos SOLO los modelos que realmente existen físicamente en tu carpeta /models
 const Cat = require('./models/Cat');
 const Meal = require('./models/Meal'); // <-- Esta se queda porque sí existe
+const LitterBox = require('./models/LitterBox');
 
 const catRoutes = require('./routes/catRoutes');
 const noteRoutes = require('./routes/noteRoutes');
@@ -22,6 +24,9 @@ app.use(express.json());
 app.use('/api/cats', catRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/meals', mealRoutes);
+app.use('/api/litterbox', litterBoxRoutes);
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/pets', require('./routes/petRoutes'));
 
 // Probar la conexión real con PostgreSQL local
 async function testDatabase() {

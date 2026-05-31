@@ -2,185 +2,173 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 export default function Meals() {
-  const [todayMeals, setTodayMeals] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [mealData, setMealData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [currentHour, setCurrentHour] = useState(new Date().getHours());
 
-  // 1. Cargar las comidas consumidas HOY desde el backend
+  // Helper para calcular el YYYY-MM-DD local exacto del celular
+  const getClientDateString = () => {
+    const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+    return (new Date(Date.now() - tzoffset)).toISOString().split('T')[0];
+  };
+
   const fetchTodayMeals = () => {
-    axios.get('http://localhost:3000/api/meals/today')
-      .then(res => setTodayMeals(res.data))
-      .catch(err => console.error('Error al traer comidas de hoy:', err));
+    const clientDate = getClientDateString();
+    axios.post('http://localhost:3000/api/meals/today', { clientDate })
+      .then(res => {
+        setMealData(res.data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
     fetchTodayMeals();
+    const timer = setInterval(() => setCurrentHour(new Date().getHours()), 60000);
+    return () => clearInterval(timer);
   }, []);
 
-  // 2. Función para registrar comida o agua al hacer clic
-  const handleRegisterMeal = (portion, waterMl = 0) => {
-    axios.post('http://localhost:3000/api/meals', {
-      portion_type: portion,
-      water_ml: waterMl,
-      served_by: 'Alex' // Reemplazable dinámicamente más adelante
+  const handleServePortion = () => {
+    const clientDate = getClientDateString();
+    axios.post('http://localhost:3000/api/meals/serve-portion', {
+      clientDate,
+      clientHour: currentHour
     })
-    .then(() => {
-      fetchTodayMeals(); // Recargamos la info para actualizar los medidores en pantalla
-    })
-    .catch(err => console.error('Error al guardar comida:', err));
+    .then(res => setMealData(res.data))
+    .catch(err => alert(err.response?.data || 'Error'));
   };
 
-  // 3. Cálculos dinámicos basados en lo que viene de la BD
-  const breakfastDone = todayMeals.some(m => m.portion_type === 'Desayuno');
-  const lunchDone = todayMeals.some(m => m.portion_type === 'Almuerzo');
-  const dinnerDone = todayMeals.some(m => m.portion_type === 'Cena');
+  const handleCheckWater = () => {
+    const clientDate = getClientDateString();
+    axios.post('http://localhost:3000/api/meals/check-water', {
+      clientDate,
+      clientHour: currentHour
+    })
+    .then(res => setMealData(res.data))
+    .catch(err => alert(err.response?.data || 'Error'));
+  };
 
-  // Sumar los ml de agua registrados hoy
-  const totalWater = todayMeals.reduce((acc, curr) => acc + curr.water_ml, 0);
-  const waterGoal = 250; // Meta diaria de agua para un gato (en ml)
-  const waterPercentage = Math.min(Math.round((totalWater / waterGoal) * 100), 100);
+  if (loading) return <div className="text-center p-10 text-slate-400">Sincronizando raciones alimentarias...</div>;
 
-  // Calcular porcentaje total de alimentación diaria (3 comidas = 100%)
-  const mealsCount = [breakfastDone, lunchDone, dinnerDone].filter(Boolean).length;
-  const foodPercentage = Math.round((mealsCount / 3) * 100);
+  const foodSchedule = [
+    { id: 'portion_1', name: '🍱 Porción 1 (Madrugón)', start: 6, end: 9, label: '06:00 AM - 09:00 AM', value: mealData?.portion_1 },
+    { id: 'portion_2', name: '🍗 Porción 2 (Media Mañana)', start: 11, end: 14, label: '11:00 AM - 02:00 PM', value: mealData?.portion_2 },
+    { id: 'portion_3', name: '🐟 Porción 3 (Tarde)', start: 16, end: 19, label: '04:00 PM - 07:00 PM', value: mealData?.portion_3 },
+    { id: 'portion_4', name: '🥩 Porción 4 (Cena Nocturna)', start: 21, end: 24, label: '09:00 PM - 11:59 PM', value: mealData?.portion_4 },
+  ];
+
+  const waterSchedule = [
+    { id: 'water_check_1', name: '💧 Inspección Mañana', start: 6, end: 12, label: '06:00 AM - 12:00 PM', value: mealData?.water_check_1 },
+    { id: 'water_check_2', name: '💧 Inspección Tarde', start: 13, end: 19, label: '01:00 PM - 07:00 PM', value: mealData?.water_check_2 },
+    { id: 'water_check_3', name: '💧 Inspección Noche', start: 20, end: 24, label: '08:00 PM - 11:59 PM', value: mealData?.water_check_3 },
+  ];
+
+  const portionsServed = foodSchedule.filter(i => i.value).length;
+  const waterChecksDone = waterSchedule.filter(i => i.value).length;
+
+  const getStatus = (item) => {
+    if (item.value) return 'SUCCESS';
+    if (currentHour >= item.start && currentHour < item.end) return 'AVAILABLE';
+    if (currentHour >= item.end) return 'MISSED';
+    return 'LOCKED';
+  };
+
+  const activeFood = foodSchedule.find(i => currentHour >= i.start && currentHour < i.end && !i.value);
+  const activeWater = waterSchedule.find(i => currentHour >= i.start && currentHour < i.end && !i.value);
 
   return (
-    <div className="w-full max-w-md mx-auto space-y-6 animate-fadeIn">
-      
-      {/* Encabezado */}
+    <div className="w-full max-w-md mx-auto space-y-6 animate-fadeIn pb-12">
       <div className="text-center">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">🍲 Alimentación</h2>
-        <p className="text-slate-400 text-sm mt-1">Control diario de porciones y agua</p>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">🍲 Nutrición e Hidratación</h2>
+        <p className="text-slate-400 text-sm mt-1">Modo Producción Internacional 📱</p>
       </div>
 
-      {/* Tarjeta de Progreso General (Estilo Circular/Barra Figma) */}
-      <div className="bg-white p-5 rounded-3xl shadow-xl border border-slate-100 space-y-4">
-        <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1">
-          📊 Resumen de hoy
-        </h3>
-        
-        {/* Barra de Progreso de Comida */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-xs font-semibold text-slate-500">
-            <span>Comida diaria servida</span>
-            <span className="text-orange-600 font-bold">{foodPercentage}%</span>
-          </div>
-          <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-            <div 
-              className="bg-orange-500 h-full transition-all duration-500 rounded-full"
-              style={{ width: `${foodPercentage}%` }}
-            />
-          </div>
+      <div className="bg-white p-5 rounded-3xl shadow-xl border border-slate-100 grid grid-cols-2 gap-4">
+        <div className="text-center p-3 bg-orange-50/50 rounded-2xl border border-orange-100">
+          <p className="text-[10px] font-bold text-orange-600 uppercase">Comida Servida</p>
+          <p className="text-2xl font-black text-orange-950 mt-1">{portionsServed} / 4</p>
         </div>
-
-        {/* Barra de Progreso de Agua */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex justify-between text-xs font-semibold text-slate-500">
-            <span>Hidratación ({totalWater}ml / {waterGoal}ml)</span>
-            <span className="text-blue-600 font-bold">{waterPercentage}%</span>
-          </div>
-          <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-            <div 
-              className="bg-blue-500 h-full transition-all duration-500 rounded-full"
-              style={{ width: `${waterPercentage}%` }}
-            />
-          </div>
+        <div className="text-center p-3 bg-sky-50/50 rounded-2xl border border-sky-100">
+          <p className="text-[10px] font-bold text-sky-600 uppercase">Aguas Revisadas</p>
+          <p className="text-2xl font-black text-sky-950 mt-1">{waterChecksDone} / 3</p>
         </div>
       </div>
 
-      {/* Sección 1: Registro de Porciones de Comida */}
-      <div className="space-y-3">
-        <h3 className="font-bold text-slate-700 text-sm pl-1">🍽️ Porciones programadas</h3>
-        
-        <div className="grid grid-cols-1 gap-2.5">
-          {/* Botón Desayuno */}
-          <button
-            onClick={() => !breakfastDone && handleRegisterMeal('Desayuno')}
-            disabled={breakfastDone}
-            className={`w-full p-4 rounded-2xl border text-left flex justify-between items-center transition-all ${
-              breakfastDone 
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800 cursor-not-allowed'
-                : 'bg-white border-slate-100 text-slate-800 hover:border-orange-200 active:scale-[0.99]'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🌅</span>
-              <div>
-                <p className="font-bold text-sm">Desayuno</p>
-                <p className="text-xs text-slate-400">{breakfastDone ? 'Ya fue servido' : 'Pendiente por servir'}</p>
+      {/* CRONOGRAMA COMIDA */}
+      <div className="bg-white p-5 rounded-3xl shadow-xl border border-slate-100 space-y-3">
+        <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">🥩 Cronograma de Alimentación</h3>
+        <div className="space-y-2">
+          {foodSchedule.map(item => {
+            const status = getStatus(item);
+            return (
+              <div key={item.id} className={`p-3 rounded-2xl border flex justify-between items-center text-xs ${
+                status === 'SUCCESS' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' :
+                status === 'AVAILABLE' ? 'bg-orange-50 border-orange-300 text-orange-950 font-black animate-pulse' :
+                status === 'MISSED' ? 'bg-rose-50 border-rose-100 text-rose-800' : 'bg-slate-50 text-slate-400 opacity-60'
+              }`}>
+                <div>
+                  <p className="font-bold">{item.name}</p>
+                  <p className="text-[10px] opacity-75">{item.label}</p>
+                </div>
+                <span className="font-bold px-2 py-0.5 rounded-lg bg-white/70 shadow-sm">
+                  {status === 'SUCCESS' ? '✅ Listo' : status === 'AVAILABLE' ? '⚡ Toca' : status === 'MISSED' ? '🤡 Falta' : '🔒 Esperar'}
+                </span>
               </div>
-            </div>
-            <span className={`text-sm font-bold ${breakfastDone ? 'text-emerald-600' : 'text-slate-300'}`}>
-              {breakfastDone ? '✅ Servido' : 'Marcar'}
-            </span>
-          </button>
-
-          {/* Botón Almuerzo */}
-          <button
-            onClick={() => !lunchDone && handleRegisterMeal('Almuerzo')}
-            disabled={lunchDone}
-            className={`w-full p-4 rounded-2xl border text-left flex justify-between items-center transition-all ${
-              lunchDone 
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800 cursor-not-allowed'
-                : 'bg-white border-slate-100 text-slate-800 hover:border-orange-200 active:scale-[0.99]'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">☀️</span>
-              <div>
-                <p className="font-bold text-sm">Almuerzo</p>
-                <p className="text-xs text-slate-400">{lunchDone ? 'Ya fue servido' : 'Pendiente por servir'}</p>
-              </div>
-            </div>
-            <span className={`text-sm font-bold ${lunchDone ? 'text-emerald-600' : 'text-slate-300'}`}>
-              {lunchDone ? '✅ Servido' : 'Marcar'}
-            </span>
-          </button>
-
-          {/* Botón Cena */}
-          <button
-            onClick={() => !dinnerDone && handleRegisterMeal('Cena')}
-            disabled={dinnerDone}
-            className={`w-full p-4 rounded-2xl border text-left flex justify-between items-center transition-all ${
-              dinnerDone 
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800 cursor-not-allowed'
-                : 'bg-white border-slate-100 text-slate-800 hover:border-orange-200 active:scale-[0.99]'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🌌</span>
-              <div>
-                <p className="font-bold text-sm">Cena</p>
-                <p className="text-xs text-slate-400">{dinnerDone ? 'Ya fue servido' : 'Pendiente por servir'}</p>
-              </div>
-            </div>
-            <span className={`text-sm font-bold ${dinnerDone ? 'text-emerald-600' : 'text-slate-300'}`}>
-              {dinnerDone ? '✅ Servido' : 'Marcar'}
-            </span>
-          </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Sección 2: Registro Rápido de Agua */}
-      <div className="space-y-3">
-        <h3 className="font-bold text-slate-700 text-sm pl-1">💧 Añadir agua bebida</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => handleRegisterMeal('Agua', 50)}
-            className="bg-blue-50 hover:bg-blue-100 border border-blue-100 text-blue-900 font-bold p-3 rounded-2xl transition-all text-xs flex flex-col items-center gap-1 active:scale-95 shadow-sm"
-          >
-            <span className="text-xl">💧</span>
-            <span>+50 ml (Vasito)</span>
-          </button>
-          <button
-            onClick={() => handleRegisterMeal('Agua', 100)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-2xl transition-all text-xs flex flex-col items-center gap-1 active:scale-95 shadow-md"
-          >
-            <span className="text-xl">🥛</span>
-            <span>+100 ml (Tazón)</span>
-          </button>
+      {/* CRONOGRAMA AGUA */}
+      <div className="bg-white p-5 rounded-3xl shadow-xl border border-slate-100 space-y-3">
+        <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">💧 Control de Agua Fresca</h3>
+        <div className="space-y-2">
+          {waterSchedule.map(item => {
+            const status = getStatus(item);
+            return (
+              <div key={item.id} className={`p-3 rounded-2xl border flex justify-between items-center text-xs ${
+                status === 'SUCCESS' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' :
+                status === 'AVAILABLE' ? 'bg-sky-50 border-sky-300 text-sky-950 font-black' :
+                'bg-slate-50 text-slate-400 opacity-60'
+              }`}>
+                <div>
+                  <p className="font-bold">{item.name}</p>
+                  <p className="text-[10px] opacity-75">{item.label}</p>
+                </div>
+                <span className="font-bold px-2 py-0.5 rounded-lg bg-white/70 shadow-sm">
+                  {status === 'SUCCESS' ? '🧼 Óptimo' : status === 'AVAILABLE' ? '👀 Revisar' : '🔒 Esperar'}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
+      {/* ACCIONES */}
+      <div className="space-y-2">
+        <button
+          disabled={!activeFood}
+          onClick={handleServePortion}
+          className={`w-full p-4 rounded-2xl text-xs font-black transition-all shadow-md ${
+            activeFood ? 'bg-orange-500 text-white hover:bg-orange-600 active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          }`}
+        >
+          {activeFood ? `🍲 Despachar ${activeFood.name}` : '🔒 No hay ventana de comida activa'}
+        </button>
+
+        <button
+          disabled={!activeWater}
+          onClick={handleCheckWater}
+          className={`w-full p-4 rounded-2xl text-xs font-black transition-all shadow-md ${
+            activeWater ? 'bg-sky-500 text-white hover:bg-sky-600 active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          }`}
+        >
+          {activeWater ? `💧 Confirmar Inspección de Agua` : '🔒 No requiere inspección de agua ahora'}
+        </button>
+      </div>
     </div>
   );
 }
